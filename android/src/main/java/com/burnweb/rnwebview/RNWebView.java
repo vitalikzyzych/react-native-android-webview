@@ -19,15 +19,39 @@ import com.facebook.react.uimanager.ThemedReactContext;
 import com.facebook.react.uimanager.UIManagerModule;
 import com.facebook.react.uimanager.events.EventDispatcher;
 
+
+import android.webkit.JavascriptInterface;
+import com.facebook.react.common.build.ReactBuildConfig;
+import com.facebook.common.logging.FLog;
+import com.burnweb.rnwebview.events.TopMessageEvent;
+import com.facebook.react.uimanager.events.Event;
+import com.facebook.react.bridge.ReactContext;
+import com.facebook.react.common.ReactConstants;
+
 class RNWebView extends WebView implements LifecycleEventListener {
 
     private final EventDispatcher mEventDispatcher;
     private final RNWebViewManager mViewManager;
+    protected boolean messagingEnabled = false;
 
     private String charset = "UTF-8";
     private String baseUrl = "file:///";
     private String injectedJavaScript = null;
     private boolean allowUrlRedirect = false;
+    protected static final String BRIDGE_NAME = "__REACT_WEB_VIEW_BRIDGE";
+
+    protected class ReactWebViewBridge {
+      RNWebView mContext;
+
+      ReactWebViewBridge(RNWebView c) {
+        mContext = c;
+      }
+
+      @JavascriptInterface
+      public void postMessage(String message) {
+        mContext.onMessage(message);
+      }
+    }
 
     protected class EventWebClient extends WebViewClient {
         public boolean shouldOverrideUrlLoading(WebView view, String url){
@@ -87,7 +111,7 @@ class RNWebView extends WebView implements LifecycleEventListener {
 
         mViewManager = viewManager;
         mEventDispatcher = reactContext.getNativeModule(UIManagerModule.class).getEventDispatcher();
-
+        reactContext.addLifecycleEventListener(this);
         this.getSettings().setJavaScriptEnabled(true);
         this.getSettings().setBuiltInZoomControls(false);
         this.getSettings().setDomStorageEnabled(true);
@@ -106,6 +130,59 @@ class RNWebView extends WebView implements LifecycleEventListener {
 
         this.setWebViewClient(new EventWebClient());
         this.setWebChromeClient(getCustomClient());
+    }
+
+    protected ReactWebViewBridge createReactWebViewBridge(RNWebView webView) {
+      return new ReactWebViewBridge(webView);
+    }
+
+    public void setMessagingEnabled(boolean enabled) {
+      if (messagingEnabled == enabled) {
+        return;
+      }
+
+      messagingEnabled = enabled;
+      if (enabled) {
+        addJavascriptInterface(createReactWebViewBridge(this), BRIDGE_NAME);
+        linkBridge();
+      } else {
+        removeJavascriptInterface(BRIDGE_NAME);
+      }
+    }
+
+    public void linkBridge() {
+      if (messagingEnabled) {
+        if (ReactBuildConfig.DEBUG && Build.VERSION.SDK_INT >= Build.VERSION_CODES.KITKAT) {
+          // See isNative in lodash
+          String testPostMessageNative = "String(window.postMessage) === String(Object.hasOwnProperty).replace('hasOwnProperty', 'postMessage')";
+          evaluateJavascript(testPostMessageNative, new ValueCallback<String>() {
+            @Override
+            public void onReceiveValue(String value) {
+              if (value.equals("true")) {
+                FLog.w(ReactConstants.TAG, "Setting onMessage on a WebView overrides existing values of window.postMessage, but a previous value was defined");
+              }
+            }
+          });
+        }
+
+        loadUrl("javascript:(" +
+          "window.originalPostMessage = window.postMessage," +
+          "window.postMessage = function(data) {" +
+            BRIDGE_NAME + ".postMessage(String(data));" +
+          "}" +
+        ")");
+      }
+    }
+
+    public void onMessage(String message) {
+      dispatchEvent(this, new TopMessageEvent(this.getId(), message));
+    }
+
+    protected static void dispatchEvent(WebView webView, Event event) {
+      ReactContext reactContext = (ReactContext) webView.getContext();
+      EventDispatcher eventDispatcher =
+        reactContext.getNativeModule(UIManagerModule.class).getEventDispatcher();
+      eventDispatcher.dispatchEvent(event);
     }
 
     public void setCharset(String charset) {

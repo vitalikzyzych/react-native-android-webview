@@ -12,6 +12,11 @@ import android.webkit.CookieManager;
 import com.facebook.react.bridge.ReadableMap;
 import com.facebook.react.bridge.ReadableMapKeySetIterator;
 
+
+import com.facebook.react.uimanager.UIManagerModule;
+import com.facebook.react.uimanager.events.Event;
+import com.facebook.react.uimanager.events.EventDispatcher;
+import com.facebook.react.bridge.ReactContext;
 import com.facebook.react.bridge.ReadableArray;
 import com.facebook.react.common.MapBuilder;
 import com.facebook.react.uimanager.SimpleViewManager;
@@ -32,6 +37,7 @@ public class RNWebViewManager extends SimpleViewManager<RNWebView> {
     public static final int INJECT_JAVASCRIPT = 6;
 
     private static final String HTML_MIME_TYPE = "text/html";
+    protected static final String BRIDGE_NAME = "__REACT_WEB_VIEW_BRIDGE";
 
     private HashMap<String, String> headerMap = new HashMap<>();
     private RNWebViewPackage aPackage;
@@ -175,15 +181,21 @@ public class RNWebViewManager extends SimpleViewManager<RNWebView> {
         view.setInjectedJavaScript(injectedJavaScript);
     }
 
+    @ReactProp(name = "messagingEnabled")
+    public void setMessagingEnabled(RNWebView view, boolean enabled) {
+      view.setMessagingEnabled(enabled);
+    }
+
     @Override
     public @Nullable Map<String, Integer> getCommandsMap() {
         return MapBuilder.of(
             "goBack", GO_BACK,
             "goForward", GO_FORWARD,
             "reload", RELOAD,
-            "stopLoading", STOP_LOADING,
-            "postMessage", POST_MESSAGE,
-            "injectJavaScript", INJECT_JAVASCRIPT
+                "reload", RELOAD,
+                "stopLoading", STOP_LOADING,
+                "postMessage", POST_MESSAGE,
+                "injectJavaScript", INJECT_JAVASCRIPT
         );
     }
 
@@ -204,22 +216,22 @@ public class RNWebViewManager extends SimpleViewManager<RNWebView> {
                 break;
             case POST_MESSAGE:
                 try {
-                  JSONObject eventInitDict = new JSONObject();
-                  eventInitDict.put("data", args.getString(0));
-                  view.loadUrl("javascript:(function () {" +
-                    "var event;" +
-                    "var data = " + eventInitDict.toString() + ";" +
-                    "try {" +
-                      "event = new MessageEvent('message', data);" +
-                    "} catch (e) {" +
-                      "event = document.createEvent('MessageEvent');" +
-                      "event.initMessageEvent('message', true, true, data.data, data.origin, data.lastEventId, data.source);" +
-                    "}" +
-                    "document.dispatchEvent(event);" +
-                  "})();");
-                } catch (JSONException e) {
-                  throw new RuntimeException(e);
-                }
+                    JSONObject eventInitDict = new JSONObject();
+                    eventInitDict.put("data", args.getString(0));
+                    view.loadUrl("javascript:(function () {" +
+                            "var event;" +
+                            "var data = " + eventInitDict.toString() + ";" +
+                            "try {" +
+                            "event = new MessageEvent('message', data);" +
+                            "} catch (e) {" +
+                            "event = document.createEvent('MessageEvent');" +
+                            "event.initMessageEvent('message', true, true, data.data, data.origin, data.lastEventId, data.source);" +
+                            "}" +
+                            "document.dispatchEvent(event);" +
+                            "})();");
+                    } catch (JSONException e) {
+                    throw new RuntimeException(e);
+                    }
                 break;
             case INJECT_JAVASCRIPT:
                 view.loadUrl("javascript:" + args.getString(0));
@@ -240,4 +252,12 @@ public class RNWebViewManager extends SimpleViewManager<RNWebView> {
 
         ((ThemedReactContext) webView.getContext()).removeLifecycleEventListener(webView);
     }
+
+    protected static void dispatchEvent(RNWebView webView, Event event) {
+        ReactContext reactContext = (ReactContext) webView.getContext();
+        EventDispatcher eventDispatcher =
+                reactContext.getNativeModule(UIManagerModule.class).getEventDispatcher();
+        eventDispatcher.dispatchEvent(event);
+    }
+
 }
