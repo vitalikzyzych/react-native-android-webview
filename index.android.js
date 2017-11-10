@@ -3,10 +3,15 @@
  */
 'use strict';
 
-var React = require('react');
-var RN = require("react-native");
+try {
+  var React = require('react');
+} catch(ex) {
+  var React = require('react-native');
+}
+
 var createClass = require('create-react-class');
 var PropTypes = require('prop-types');
+var RN = require("react-native");
 
 var { requireNativeComponent, NativeModules } = require('react-native');
 var RCTUIManager = NativeModules.UIManager;
@@ -28,6 +33,7 @@ var WebViewAndroid = createClass({
     geolocationEnabled: PropTypes.bool,
     allowUrlRedirect: PropTypes.bool,
     builtInZoomControls: PropTypes.bool,
+    onMessage: PropTypes.func,
     onNavigationStateChange: PropTypes.func
   },
   _onNavigationStateChange: function(event) {
@@ -49,6 +55,27 @@ var WebViewAndroid = createClass({
       null
     );
   },
+  stopLoading: function() {
+     RCTUIManager.dispatchViewManagerCommand(
+       this._getWebViewHandle(),
+       RCTUIManager.RNWebViewAndroid.Commands.stopLoading,
+       null
+     );
+   },
+   postMessage: function(data) {
+     RCTUIManager.dispatchViewManagerCommand(
+       this._getWebViewHandle(),
+       RCTUIManager.RNWebViewAndroid.Commands.postMessage,
+       [String(data)]
+     );
+   },
+   injectJavaScript: function(data) {
+     RCTUIManager.dispatchViewManagerCommand(
+       this._getWebViewHandle(),
+       RCTUIManager.RNWebViewAndroid.Commands.injectJavaScript,
+       [data]
+     );
+   },
   reload: function() {
     RCTUIManager.dispatchViewManagerCommand(
       this._getWebViewHandle(),
@@ -56,32 +83,17 @@ var WebViewAndroid = createClass({
       null
     );
   },
-  stopLoading: function() {
-    RCTUIManager.dispatchViewManagerCommand(
-      this.getWebViewHandle(),
-      RCTUIManager.RNWebViewAndroid.Commands.stopLoading,
-      null
-    );
-  },
-  postMessage: function(data) {
-    RCTUIManager.dispatchViewManagerCommand(
-      this.getWebViewHandle(),
-      RCTUIManager.RNWebViewAndroid.Commands.postMessage,
-      [String(data)]
-    );
-  },
-  injectJavaScript: function(data) {
-    RCTUIManager.dispatchViewManagerCommand(
-      this._getWebViewHandle(),
-      RCTUIManager.RNWebViewAndroid.Commands.injectJavaScript,
-      [data]
-    );
-  },
   render: function() {
-    return <RNWebViewAndroid ref={WEBVIEW_REF} {...this.props} onNavigationStateChange={this._onNavigationStateChange} />;
+    console.log(this.props)
+    return <RNWebViewAndroid ref={WEBVIEW_REF} messagingEnabled={true} {...this.props} onMessage={this._onMessage} onNavigationStateChange={this._onNavigationStateChange} />;
   },
   _getWebViewHandle: function() {
     return RN.findNodeHandle(this.refs[WEBVIEW_REF]);
+  },
+  _onMessage: function(event: Event) {
+    console.log(event)
+    var {onMessage} = this.props;
+    onMessage && onMessage(event);
   },
 });
 
